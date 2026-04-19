@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Vantage — Interactive Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.9); opacity: 0.6; }
+      70% { transform: scale(1.6); opacity: 0; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .pulse-ring { animation: pulse-ring 1.8s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite; }
+    @keyframes spin-slow { to { transform: rotate(360deg); } }
+    .spin-slow { animation: spin-slow 3s linear infinite; }
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up { animation: fade-up 0.4s ease-out both; }
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .slide-in { animation: slide-in 0.35s ease-out both; }
+    @keyframes bar-grow { from { width: 0%; } }
+    .bar-grow { animation: bar-grow 1.2s ease-out both; }
+    @keyframes count-up { from { opacity: 0; } to { opacity: 1; } }
+    .count-up { animation: count-up 0.6s ease-out both; }
+    .phone-shadow { box-shadow: 0 30px 60px -20px rgba(16,24,40,0.35), 0 18px 36px -18px rgba(16,24,40,0.25); }
+    .bg-grid {
+      background-image:
+        radial-gradient(circle at 1px 1px, rgba(16,185,129,0.12) 1px, transparent 0);
+      background-size: 22px 22px;
+    }
+  </style>
+</head>
+<body class="bg-slate-100">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    // ---------- MOCK DATA (Nigerian context) ----------
+    const APPS = [
+      { id: "tiktok",    name: "TikTok",      icon: "🎵", color: "bg-rose-500",    bg: 420, fg: 180, priority: "low" },
+      { id: "instagram", name: "Instagram",   icon: "📸", color: "bg-pink-500",    bg: 310, fg: 220, priority: "medium" },
+      { id: "youtube",   name: "YouTube",     icon: "▶️", color: "bg-red-600",     bg: 250, fg: 600, priority: "medium" },
+      { id: "whatsapp",  name: "WhatsApp",    icon: "💬", color: "bg-emerald-500", bg: 40,  fg: 120, priority: "high"   },
+      { id: "chrome",    name: "Chrome",      icon: "🌐", color: "bg-sky-500",     bg: 150, fg: 260, priority: "medium" },
+      { id: "facebook",  name: "Facebook",    icon: "👥", color: "bg-blue-600",    bg: 180, fg: 100, priority: "low"    },
+      { id: "xapp",      name: "X (Twitter)", icon: "𝕏",  color: "bg-slate-800",   bg: 90,  fg: 110, priority: "low"    },
+      { id: "playstore", name: "Play Store",  icon: "📦", color: "bg-amber-500",   bg: 380, fg: 10,  priority: "low"    },
+    ];
+
+    const WEEK = [
+      { day: "Mon", used: 820, saved: 180 },
+      { day: "Tue", used: 740, saved: 260 },
+      { day: "Wed", used: 690, saved: 310 },
+      { day: "Thu", used: 580, saved: 420 },
+      { day: "Fri", used: 520, saved: 480 },
+      { day: "Sat", used: 610, saved: 390 },
+      { day: "Sun", used: 470, saved: 530 },
+    ];
+
+    // ---------- SMALL UI HELPERS ----------
+    const fmtMB = (mb) => mb >= 1000 ? `${(mb/1000).toFixed(2)} GB` : `${mb} MB`;
+    const naira = (n) => `₦${n.toLocaleString("en-NG")}`;
+
+    const Icon = ({ children, className = "" }) => (
+      <span className={`inline-flex items-center justify-center ${className}`}>{children}</span>
+    );
+
+    const AppAvatar = ({ app, size = 11 }) => (
+      <div className={`w-${size} h-${size} rounded-2xl ${app.color} text-white flex items-center justify-center text-lg font-semibold shadow-sm flex-shrink-0`}>
+        {app.icon}
+      </div>
+    );
+
+    // ---------- PHONE SHELL ----------
+    const PhoneShell = ({ children, theme = "light" }) => {
+      const [time, setTime] = useState("");
+      useEffect(() => {
+        const update = () => {
+          const d = new Date();
+          setTime(d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: false }));
+        };
+        update();
+        const t = setInterval(update, 10000);
+        return () => clearInterval(t);
+      }, []);
+
+      const statusColor = theme === "dark" ? "text-white" : "text-slate-900";
+
+      return (
+        <div className="relative w-[380px] h-[780px] bg-black rounded-[44px] p-[10px] phone-shadow">
+          <div className="relative w-full h-full rounded-[36px] overflow-hidden bg-white">
+            {/* Status bar */}
+            <div className={`absolute top-0 left-0 right-0 flex items-center justify-between px-7 pt-3 pb-1 text-xs font-semibold z-40 ${statusColor}`}>
+              <span>{time}</span>
+              <span className="flex items-center gap-1">
+                <span>●●●●</span>
+                <span>MTN</span>
+                <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><rect x="0" y="3" width="2" height="4" fill="currentColor"/><rect x="3" y="2" width="2" height="6" fill="currentColor"/><rect x="6" y="1" width="2" height="8" fill="currentColor"/><rect x="9" y="0" width="2" height="10" fill="currentColor"/></svg>
+                <svg width="18" height="10" viewBox="0 0 24 12" fill="none"><rect x="1" y="1" width="20" height="10" rx="2" stroke="currentColor" strokeWidth="1.2"/><rect x="3" y="3" width="15" height="6" fill="currentColor"/><rect x="22" y="4" width="1.5" height="4" rx="0.5" fill="currentColor"/></svg>
+              </span>
+            </div>
+            {/* Notch */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-6 bg-black rounded-b-2xl z-50"></div>
+            {/* Content */}
+            <div className="w-full h-full overflow-hidden">
+              {children}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ---------- ROUTER STATE ----------
+    const SCREENS = [
+      "welcome", "permissions", "scanning", "wow", "fix", "fixSuccess",
+      "dashboard", "insights", "weekly", "modes", "share"
+    ];
+
+    // ---------- WELCOME ----------
+    const WelcomeScreen = ({ go }) => (
+      <div className="w-full h-full bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 text-white flex flex-col relative overflow-hidden">
+        <div className="absolute inset-0 bg-grid opacity-30"></div>
+        <div className="relative flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="relative mb-6">
+            <div className="absolute inset-0 rounded-3xl bg-white/20 pulse-ring"></div>
+            <div className="relative w-20 h-20 rounded-3xl bg-white text-emerald-600 flex items-center justify-center text-4xl font-black shadow-2xl">
+              DV
+            </div>
+          </div>
+          <h1 className="text-3xl font-extrabold tracking-tight mb-3">Data Vantage</h1>
+          <p className="text-lg font-medium text-emerald-50/95 mb-2">
+            Stop data waste.
+          </p>
+          <p className="text-xl font-bold text-white mb-6">
+            Make your data last 2× longer.
+          </p>
+          <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-4 w-full max-w-[280px] border border-white/20">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">🇳🇬</div>
+              <div className="text-sm text-left leading-tight">
+                <div className="font-semibold">Built for Nigeria</div>
+                <div className="text-emerald-100/90 text-xs">Save up to ₦5,000/month</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">⚡</div>
+              <div className="text-sm text-left leading-tight">
+                <div className="font-semibold">Works automatically</div>
+                <div className="text-emerald-100/90 text-xs">No settings headache</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="relative px-6 pb-8">
+          <button
+            onClick={() => go("permissions")}
+            className="w-full bg-white text-emerald-700 font-bold py-4 rounded-2xl text-lg active:scale-95 transition shadow-xl">
+            Start saving data →
+          </button>
+          <p className="text-center text-xs text-emerald-100/80 mt-3">
+            Free to start • No credit card needed
+          </p>
+        </div>
+      </div>
+    );
+
+    // ---------- PERMISSIONS ----------
+    const PermissionsScreen = ({ go }) => {
+      const [granted, setGranted] = useState({ usage: false, data: false });
+      const allGranted = granted.usage && granted.data;
+
+      return (
+        <div className="w-full h-full bg-white flex flex-col pt-10">
+          <div className="px-6 pt-8">
+            <div className="text-5xl mb-4">🔒</div>
+            <h2 className="text-2xl font-extrabold text-slate-900 leading-tight mb-2">
+              We need your permission
+            </h2>
+            <p className="text-slate-600 text-base leading-relaxed">
+              So we can see which apps are draining your data — and stop them for you.
+            </p>
+          </div>
+
+          <div className="flex-1 px-6 mt-6 space-y-3">
+            <PermissionCard
+              icon="📊"
+              title="See app data usage"
+              body="To show you exactly which apps are eating your MB."
+              granted={granted.usage}
+              onGrant={() => setGranted(g => ({ ...g, usage: true }))}
+            />
+            <PermissionCard
+              icon="🚦"
+              title="Control background data"
+              body="To stop apps silently burning your data while you sleep."
+              granted={granted.data}
+              onGrant={() => setGranted(g => ({ ...g, data: true }))}
+            />
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mt-4">
+              <div className="flex items-start gap-3">
+                <span className="text-xl">🛡️</span>
+                <div className="text-sm text-emerald-900 leading-snug">
+                  <b>We never read your content.</b> Not your chats, photos, or videos. We only see how much — never what.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-6 pb-8">
+            <button
+              disabled={!allGranted}
+              onClick={() => go("scanning")}
+              className={`w-full font-bold py-4 rounded-2xl text-lg transition shadow-lg ${
+                allGranted
+                  ? "bg-emerald-600 text-white active:scale-95"
+                  : "bg-slate-200 text-slate-400"
+              }`}>
+              {allGranted ? "Continue →" : "Grant both to continue"}
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    const PermissionCard = ({ icon, title, body, granted, onGrant }) => (
+      <div className={`rounded-2xl p-4 border-2 transition ${granted ? "bg-emerald-50 border-emerald-300" : "bg-white border-slate-200"}`}>
+        <div className="flex items-start gap-3">
+          <div className="text-2xl">{icon}</div>
+          <div className="flex-1">
+            <div className="font-bold text-slate-900">{title}</div>
+            <div className="text-sm text-slate-600 leading-snug mt-0.5">{body}</div>
+          </div>
+        </div>
+        <button
+          onClick={onGrant}
+          disabled={granted}
+          className={`mt-3 w-full py-2.5 rounded-xl font-semibold text-sm transition ${
+            granted
+              ? "bg-emerald-600 text-white"
+              : "bg-slate-900 text-white active:scale-95"
+          }`}>
+          {granted ? "✓ Granted" : "Allow"}
+        </button>
+      </div>
+    );
+
+    // ---------- SCANNING ----------
+    const ScanningScreen = ({ go }) => {
+      const [progress, setProgress] = useState(0);
+      const [status, setStatus] = useState("Checking installed apps…");
+
+      useEffect(() => {
+        const messages = [
+          "Checking installed apps…",
+          "Reading 7-day usage history…",
+          "Finding background data drains…",
+          "Spotting waste patterns…",
+          "Almost done…",
+        ];
+        let i = 0;
+        const interval = setInterval(() => {
+          setProgress(p => {
+            const np = Math.min(100, p + 3);
+            const mi = Math.floor((np / 100) * messages.length);
+            setStatus(messages[Math.min(mi, messages.length - 1)]);
+            if (np >= 100) { clearInterval(interval); setTimeout(() => go("wow"), 500); }
+            return np;
+          });
+        }, 90);
+        return () => clearInterval(interval);
+      }, []);
+
+      return (
+        <div className="w-full h-full bg-gradient-to-br from-slate-900 via-emerald-900 to-emerald-800 text-white flex flex-col items-center justify-center p-8 pt-16">
+          <div className="relative mb-8">
+            <div className="absolute inset-0 rounded-full bg-emerald-400/30 pulse-ring"></div>
+            <div className="relative w-32 h-32 rounded-full bg-white/10 border border-emerald-300/30 flex items-center justify-center">
+              <svg className="spin-slow" width="70" height="70" viewBox="0 0 70 70" fill="none">
+                <circle cx="35" cy="35" r="30" stroke="rgba(255,255,255,0.2)" strokeWidth="3"/>
+                <circle cx="35" cy="35" r="30" stroke="#10ffc9" strokeWidth="3" strokeDasharray="188" strokeDashoffset="140" strokeLinecap="round"/>
+              </svg>
+              <div className="absolute text-4xl">📡</div>
+            </div>
+          </div>
+          <h2 className="text-2xl font-extrabold mb-2">Analyzing your data usage</h2>
+          <p className="text-emerald-100/80 text-sm mb-8">{status}</p>
+          <div className="w-full max-w-xs bg-white/15 rounded-full h-2 overflow-hidden">
+            <div className="h-full bg-emerald-400 rounded-full transition-all duration-200" style={{ width: `${progress}%` }}></div>
+          </div>
+          <div className="mt-3 text-xs text-emerald-100/70 font-semibold">{progress}%</div>
+        </div>
+      );
+    };
+
+    // ---------- WOW MOMENT ----------
+    const WowScreen = ({ go }) => {
+      const topWaste = APPS
+        .filter(a => a.priority !== "high")
+        .sort((a,b) => b.bg - a.bg)
+        .slice(0, 3);
+      const totalWaste = topWaste.reduce((s,a)=>s+a.bg, 0);
+      const estSaveNgn = Math.round(totalWaste * 1.2); // ₦1.2 per MB approx
+
+      return (
+        <div className="w-full h-full bg-white flex flex-col pt-10">
+          <div className="px-6 pt-8 pb-2">
+            <div className="inline-flex items-center gap-1.5 bg-rose-100 text-rose-700 px-3 py-1 rounded-full text-xs font-bold mb-3 fade-up">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+              SCAN COMPLETE
+            </div>
+            <h2 className="text-[26px] font-black text-slate-900 leading-tight fade-up" style={{animationDelay:"0.05s"}}>
+              3 apps are <span className="text-rose-600">wasting</span><br/>your data right now.
+            </h2>
+            <p className="text-slate-500 text-sm mt-2 fade-up" style={{animationDelay:"0.1s"}}>
+              These apps ate data in the background — while you weren't even using them.
+            </p>
+          </div>
+
+          <div className="flex-1 px-6 mt-4 space-y-2.5 overflow-y-auto no-scrollbar">
+            {topWaste.map((app, i) => (
+              <div key={app.id} className="fade-up bg-slate-50 rounded-2xl p-3 border border-slate-200" style={{animationDelay: `${0.15 + i*0.08}s`}}>
+                <div className="flex items-center gap-3">
+                  <AppAvatar app={app} />
+                  <div className="flex-1">
+                    <div className="font-bold text-slate-900">{app.name}</div>
+                    <div className="text-xs text-slate-500">Background use • yesterday</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-black text-rose-600">{app.bg} MB</div>
+                    <div className="text-[10px] text-slate-500">= {naira(Math.round(app.bg*1.2))}</div>
+                  </div>
+                </div>
+                <div className="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-rose-500 to-rose-400 rounded-full bar-grow" style={{ width: `${(app.bg / 450) * 100}%`, animationDelay: `${0.2 + i*0.08}s` }}></div>
+                </div>
+              </div>
+            ))}
+
+            <div className="mt-4 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white p-5 shadow-lg fade-up" style={{animationDelay: "0.5s"}}>
+              <div className="text-xs font-bold uppercase tracking-wider text-emerald-100/90">You could save</div>
+              <div className="flex items-baseline gap-2 mt-1">
+                <div className="text-4xl font-black count-up">{fmtMB(totalWaste)}</div>
+                <div className="text-base font-semibold opacity-90">this week</div>
+              </div>
+              <div className="text-emerald-50/95 text-sm mt-1">
+                ≈ <b>{naira(estSaveNgn)}</b> back in your pocket 💸
+              </div>
+            </div>
+          </div>
+
+          <div className="px-6 pb-8 pt-3">
+            <button
+              onClick={() => go("fix")}
+              className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl text-lg active:scale-95 transition shadow-xl">
+              Fix this now →
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    // ---------- FIX FLOW ----------
+    const FixScreen = ({ go }) => {
+      const steps = [
+        { app: "tiktok",    label: "Restrict TikTok background",    saved: 420 },
+        { app: "instagram", label: "Restrict Instagram background", saved: 310 },
+        { app: "playstore", label: "Pause Play Store auto-updates", saved: 380 },
+      ];
+      const [idx, setIdx] = useState(0);
+      const [applying, setApplying] = useState(false);
+      const current = steps[idx];
+      const currentApp = APPS.find(a => a.id === current.app);
+      const totalSaved = steps.slice(0, idx).reduce((s,x)=>s+x.saved, 0);
+
+      const apply = () => {
+        setApplying(true);
+        setTimeout(() => {
+          if (idx < steps.length - 1) {
+            setIdx(i => i + 1);
+            setApplying(false);
+          } else {
+            go("fixSuccess");
+          }
+        }, 1100);
+      };
+
+      return (
+        <div className="w-full h-full bg-white flex flex-col pt-10">
+          <div className="px-6 pt-6 pb-3 flex items-center justify-between">
+            <button onClick={() => go("wow")} className="text-slate-500 font-semibold text-sm">← Back</button>
+            <div className="text-xs text-slate-500">Step {idx+1} of {steps.length}</div>
+          </div>
+
+          <div className="px-6">
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${((idx) / steps.length) * 100}%` }}></div>
+            </div>
+          </div>
+
+          <div className="flex-1 px-6 pt-8 flex flex-col items-center text-center">
+            <div className="relative">
+              <div className={`w-24 h-24 rounded-3xl ${currentApp.color} text-white flex items-center justify-center text-4xl shadow-xl transition ${applying ? "scale-110" : ""}`}>
+                {currentApp.icon}
+              </div>
+              {applying && <div className="absolute inset-0 rounded-3xl bg-emerald-400/50 pulse-ring"></div>}
+            </div>
+
+            <h2 className="text-2xl font-extrabold text-slate-900 mt-6">{current.label}</h2>
+            <p className="text-slate-500 text-sm mt-2 max-w-xs">
+              {applying ? "Applying restriction…" : `This stops ${currentApp.name} from using data while you're not in it.`}
+            </p>
+
+            <div className="mt-6 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-3">
+              <div className="text-xs text-emerald-700 font-semibold">Will save</div>
+              <div className="text-3xl font-black text-emerald-700">{fmtMB(current.saved)}</div>
+            </div>
+          </div>
+
+          <div className="px-6 pb-8 space-y-2">
+            <button
+              disabled={applying}
+              onClick={apply}
+              className={`w-full font-bold py-4 rounded-2xl text-lg transition shadow-xl ${
+                applying
+                  ? "bg-slate-300 text-slate-500"
+                  : "bg-emerald-600 text-white active:scale-95"
+              }`}>
+              {applying ? "Applying…" : `Restrict ${currentApp.name}`}
+            </button>
+            <button
+              disabled={applying}
+              onClick={() => idx < steps.length-1 ? setIdx(i => i+1) : go("fixSuccess")}
+              className="w-full text-slate-500 font-semibold py-2">
+              Skip this one
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    const FixSuccessScreen = ({ go }) => (
+      <div className="w-full h-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex flex-col items-center justify-center px-8 pt-10 relative overflow-hidden">
+        <div className="absolute inset-0 bg-grid opacity-25"></div>
+        <div className="relative">
+          <div className="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-6 border-4 border-white/30 backdrop-blur-sm">
+            <svg width="50" height="50" viewBox="0 0 50 50" fill="none">
+              <path d="M14 25l8 8 16-16" stroke="white" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <h2 className="text-3xl font-black text-center">Done!</h2>
+          <p className="text-center text-emerald-50 mt-2">Your data is now protected.</p>
+
+          <div className="mt-8 bg-white/15 backdrop-blur-sm rounded-3xl p-6 border border-white/20 w-[280px]">
+            <div className="text-sm text-emerald-100/90 font-semibold text-center">We just saved you</div>
+            <div className="text-5xl font-black text-center my-2">1.11 GB</div>
+            <div className="text-center text-emerald-50">≈ <b>{naira(1332)}</b> this week</div>
+            <div className="h-px bg-white/20 my-4"></div>
+            <div className="grid grid-cols-3 text-center text-xs">
+              <div><div className="font-bold text-lg">3</div><div className="text-emerald-100/80">Apps fixed</div></div>
+              <div><div className="font-bold text-lg">4</div><div className="text-emerald-100/80">Days extra</div></div>
+              <div><div className="font-bold text-lg">22%</div><div className="text-emerald-100/80">Less waste</div></div>
+            </div>
+          </div>
+        </div>
+        <div className="relative w-full max-w-[280px] mt-8 space-y-2">
+          <button
+            onClick={() => go("dashboard")}
+            className="w-full bg-white text-emerald-700 font-bold py-4 rounded-2xl text-lg active:scale-95 transition shadow-xl">
+            Go to dashboard →
+          </button>
+          <button
+            onClick={() => go("share")}
+            className="w-full bg-white/10 text-white font-semibold py-3 rounded-2xl border border-white/30 text-sm active:scale-95 transition">
+            Share the savings 🎉
+          </button>
+        </div>
+      </div>
+    );
+
+    // ---------- DASHBOARD ----------
+    const DashboardScreen = ({ go, mode, setMode, stats }) => {
+      const modeConfig = {
+        survival: { label: "Survival", color: "bg-emerald-600", emoji: "🛡️", desc: "Maximum saving" },
+        balanced: { label: "Balanced", color: "bg-blue-600",    emoji: "⚖️", desc: "Smart defaults" },
+        normal:   { label: "Normal",   color: "bg-slate-500",   emoji: "🌊", desc: "No restrictions" },
+      };
+
+      const topUsing = APPS.slice().sort((a,b)=>(b.fg+b.bg) - (a.fg+a.bg)).slice(0, 4);
+
+      return (
+        <div className="w-full h-full bg-slate-50 flex flex-col pt-10">
+          {/* Header */}
+          <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">Hi, Isi 👋</div>
+              <div className="text-lg font-bold text-slate-900">Today's savings</div>
+            </div>
+            <button onClick={() => go("weekly")} className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-lg shadow-sm">
+              🏆
+            </button>
+          </div>
+
+          {/* Hero Savings Card */}
+          <div className="mx-5 rounded-3xl p-5 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-xl relative overflow-hidden">
+            <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+            <div className="relative">
+              <div className="text-xs font-bold uppercase tracking-wider text-emerald-100/90">Saved today</div>
+              <div className="flex items-baseline gap-2 mt-1">
+                <div className="text-4xl font-black">{fmtMB(stats.savedToday)}</div>
+                <div className="text-sm opacity-90">≈ {naira(stats.savedNgnToday)}</div>
+              </div>
+              <div className="mt-3 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                <div className="h-full bg-white/90 rounded-full bar-grow" style={{ width: "68%" }}></div>
+              </div>
+              <div className="flex items-center justify-between mt-2 text-xs text-emerald-50">
+                <span>Today's goal: 200 MB</span>
+                <span>68%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Data Status */}
+          <div className="mx-5 mt-3 rounded-3xl bg-white border border-slate-200 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Data remaining</div>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <span className="text-2xl font-black text-slate-900">1.2 GB</span>
+                  <span className="text-sm text-slate-500">of 3 GB</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-slate-500">Will last</div>
+                <div className="text-lg font-bold text-emerald-600">2d 14h</div>
+              </div>
+            </div>
+            <div className="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full bar-grow" style={{ width: "40%" }}></div>
+            </div>
+            <button onClick={() => go("insights")} className="mt-3 w-full text-xs text-slate-600 font-semibold bg-slate-50 hover:bg-slate-100 rounded-xl py-2 active:scale-95 transition">
+              See forecast →
+            </button>
+          </div>
+
+          {/* Mode Selector */}
+          <div className="mx-5 mt-3">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Current mode</div>
+              <button onClick={() => go("modes")} className="text-xs font-semibold text-emerald-700">Change →</button>
+            </div>
+            <button onClick={() => go("modes")} className="w-full rounded-2xl bg-white border border-slate-200 p-3 flex items-center gap-3 active:scale-[0.99] transition">
+              <div className={`w-11 h-11 rounded-xl ${modeConfig[mode].color} text-white flex items-center justify-center text-xl`}>
+                {modeConfig[mode].emoji}
+              </div>
+              <div className="flex-1 text-left">
+                <div className="font-bold text-slate-900">{modeConfig[mode].label} Mode</div>
+                <div className="text-xs text-slate-500">{modeConfig[mode].desc}</div>
+              </div>
+              <div className="text-slate-400">›</div>
+            </button>
+          </div>
+
+          {/* Top Apps */}
+          <div className="mx-5 mt-4 flex-1 overflow-y-auto no-scrollbar pb-20">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Top data users today</div>
+              <button onClick={() => go("insights")} className="text-xs font-semibold text-emerald-700">All →</button>
+            </div>
+            <div className="space-y-2">
+              {topUsing.map(app => {
+                const total = app.fg + app.bg;
+                const bgPct = (app.bg / total) * 100;
+                return (
+                  <div key={app.id} className="bg-white rounded-2xl p-3 border border-slate-200">
+                    <div className="flex items-center gap-3">
+                      <AppAvatar app={app} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <div className="font-bold text-slate-900 truncate">{app.name}</div>
+                          <div className="font-bold text-slate-900">{fmtMB(total)}</div>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
+                            <div className="h-full bg-slate-400 bar-grow" style={{ width: `${100-bgPct}%` }}></div>
+                            <div className="h-full bg-rose-500 bar-grow" style={{ width: `${bgPct}%` }}></div>
+                          </div>
+                          <div className="text-[10px] text-rose-600 font-semibold">{Math.round(bgPct)}% bg</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Suggested actions */}
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2 px-1">
+                <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Actions for today</div>
+              </div>
+              <div className="space-y-2">
+                <ActionCard icon="📥" title="Turn off WhatsApp auto-download" save="200 MB" ngn={240} />
+                <ActionCard icon="📺" title="Lower YouTube to 480p on data" save="310 MB" ngn={372} />
+                <ActionCard icon="🔁" title="Disable Play Store auto-updates" save="380 MB" ngn={456} />
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom nav */}
+          <BottomNav active="home" go={go} />
+        </div>
+      );
+    };
+
+    const ActionCard = ({ icon, title, save, ngn }) => {
+      const [done, setDone] = useState(false);
+      return (
+        <div className={`rounded-2xl p-3 border transition ${done ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200"}`}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-xl">{icon}</div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm text-slate-900 leading-tight">{title}</div>
+              <div className="text-xs text-emerald-700 font-bold mt-0.5">Save {save} (~{naira(ngn)})</div>
+            </div>
+            <button
+              onClick={() => setDone(d => !d)}
+              className={`text-xs font-bold px-3 py-2 rounded-xl transition ${
+                done
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-900 text-white active:scale-95"
+              }`}>
+              {done ? "✓ Done" : "Apply"}
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    // ---------- INSIGHTS ----------
+    const InsightsScreen = ({ go }) => {
+      const maxBar = Math.max(...WEEK.map(d => d.used + d.saved));
+      const totalSaved = WEEK.reduce((s,d)=>s+d.saved, 0);
+
+      return (
+        <div className="w-full h-full bg-white flex flex-col pt-10">
+          <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+            <button onClick={() => go("dashboard")} className="text-slate-500 font-semibold text-sm">← Back</button>
+            <div className="font-bold text-slate-900">Insights</div>
+            <div className="w-10"></div>
+          </div>
+
+          <div className="px-5 pb-20 overflow-y-auto no-scrollbar flex-1">
+            {/* Forecast */}
+            <div className="rounded-3xl p-5 bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-lg">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Data forecast</div>
+              <div className="mt-1 text-[20px] font-bold leading-tight">
+                At this rate, your 3GB plan lasts until <span className="text-emerald-400">Thursday</span>.
+              </div>
+              <div className="mt-3 flex items-center gap-2 text-xs text-slate-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                Normal. No top-up needed.
+              </div>
+              <div className="h-px bg-white/10 my-4"></div>
+              <div className="text-sm text-slate-300">
+                💡 Turning <b className="text-white">Survival Mode</b> on now stretches it <b className="text-emerald-400">+2 extra days</b>.
+              </div>
+            </div>
+
+            {/* Weekly bars */}
+            <div className="mt-5">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-bold text-slate-900">This week</div>
+                <div className="text-xs text-emerald-700 font-bold">Saved {fmtMB(totalSaved)}</div>
+              </div>
+              <div className="bg-slate-50 rounded-3xl p-4 border border-slate-200">
+                <div className="flex items-end justify-between h-36 gap-1">
+                  {WEEK.map((d, i) => {
+                    const usedH = (d.used / maxBar) * 100;
+                    const savedH = (d.saved / maxBar) * 100;
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                        <div className="flex flex-col-reverse h-28 w-full bg-slate-100 rounded-md overflow-hidden">
+                          <div className="bg-slate-400 bar-grow" style={{ height: `${usedH}%`, animationDelay: `${i*0.06}s` }}></div>
+                          <div className="bg-emerald-500 bar-grow" style={{ height: `${savedH}%`, animationDelay: `${i*0.06 + 0.1}s` }}></div>
+                        </div>
+                        <div className="text-[10px] font-semibold text-slate-500">{d.day}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-4 mt-3 text-xs">
+                  <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-slate-400"></div><span className="text-slate-600">Used</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-emerald-500"></div><span className="text-slate-600">Saved by Data Vantage</span></div>
+                </div>
+              </div>
+            </div>
+
+            {/* All apps */}
+            <div className="mt-5">
+              <div className="font-bold text-slate-900 mb-2">All apps</div>
+              <div className="space-y-2">
+                {APPS.map(app => {
+                  const total = app.fg + app.bg;
+                  const bgPct = total ? (app.bg / total) * 100 : 0;
+                  const tag = app.priority === "high" ? { label: "Protected", color: "bg-emerald-100 text-emerald-700" } :
+                              app.priority === "medium" ? { label: "Watched",   color: "bg-amber-100 text-amber-700" } :
+                              { label: "Restricted", color: "bg-rose-100 text-rose-700" };
+                  return (
+                    <div key={app.id} className="bg-white rounded-2xl p-3 border border-slate-200">
+                      <div className="flex items-center gap-3">
+                        <AppAvatar app={app} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="font-bold text-slate-900 truncate">{app.name}</div>
+                            <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tag.color}`}>{tag.label}</div>
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">{fmtMB(total)} • {Math.round(bgPct)}% background</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <BottomNav active="insights" go={go} />
+        </div>
+      );
+    };
+
+    // ---------- WEEKLY REPORT ----------
+    const WeeklyScreen = ({ go }) => {
+      const totalSaved = WEEK.reduce((s,d)=>s+d.saved, 0);
+      const totalNgn = Math.round(totalSaved * 1.2);
+
+      return (
+        <div className="w-full h-full bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white flex flex-col pt-10 relative overflow-hidden">
+          <div className="absolute inset-0 bg-grid opacity-20"></div>
+          <div className="relative px-5 pt-5 flex items-center justify-between">
+            <button onClick={() => go("dashboard")} className="text-white/80 font-semibold text-sm">← Back</button>
+            <div className="text-xs bg-white/20 rounded-full px-3 py-1 font-bold">WEEK OF APR 13</div>
+            <div className="w-10"></div>
+          </div>
+
+          <div className="relative flex-1 px-6 pt-6 flex flex-col">
+            <div className="text-5xl mb-2">🏆</div>
+            <h2 className="text-3xl font-black leading-tight">
+              You crushed it<br/>this week, Isi.
+            </h2>
+            <p className="text-white/80 mt-2 text-sm">Here's what Data Vantage did for you:</p>
+
+            <div className="mt-6 bg-white/15 backdrop-blur-sm rounded-3xl p-5 border border-white/25">
+              <div className="text-xs font-bold uppercase tracking-wider text-white/80">Total saved</div>
+              <div className="flex items-baseline gap-2 mt-1">
+                <div className="text-5xl font-black">{(totalSaved/1000).toFixed(2)}</div>
+                <div className="text-2xl font-bold">GB</div>
+              </div>
+              <div className="text-lg font-semibold mt-1 text-white">≈ {naira(totalNgn)} saved 💸</div>
+              <div className="h-px bg-white/20 my-4"></div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-2xl font-black">38%</div>
+                  <div className="text-[10px] uppercase text-white/70 font-bold">Less waste</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-black">14</div>
+                  <div className="text-[10px] uppercase text-white/70 font-bold">Apps fixed</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-black">6d</div>
+                  <div className="text-[10px] uppercase text-white/70 font-bold">Plan lasted</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
+              <div className="text-xs font-bold uppercase text-white/70 tracking-wider mb-2">Your top waste-blocker</div>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-rose-500 flex items-center justify-center text-2xl">🎵</div>
+                <div>
+                  <div className="font-bold">TikTok restriction</div>
+                  <div className="text-xs text-white/80">saved 1.4 GB (₦1,680) alone</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative px-6 pb-8 pt-3 space-y-2">
+            <button
+              onClick={() => go("share")}
+              className="w-full bg-white text-purple-700 font-bold py-4 rounded-2xl text-lg active:scale-95 transition shadow-xl">
+              Share with friends 📲
+            </button>
+            <button
+              onClick={() => go("dashboard")}
+              className="w-full bg-white/10 text-white font-semibold py-3 rounded-2xl border border-white/30 text-sm active:scale-95 transition">
+              Back to dashboard
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    // ---------- MODES ----------
+    const ModesScreen = ({ go, mode, setMode }) => {
+      const modes = [
+        {
+          id: "survival",
+          title: "Survival Mode",
+          emoji: "🛡️",
+          subtitle: "Save every MB humanly possible",
+          color: "from-emerald-500 to-teal-600",
+          savings: "Up to 70%",
+          details: [
+            "Only essential apps online",
+            "Videos forced to 360p",
+            "Auto-downloads: off",
+            "Background data: blocked",
+          ],
+        },
+        {
+          id: "balanced",
+          title: "Balanced Mode",
+          emoji: "⚖️",
+          subtitle: "Smart limits, no disruption",
+          color: "from-blue-500 to-indigo-600",
+          savings: "30–45%",
+          details: [
+            "Priority apps always online",
+            "Videos capped at 480p on data",
+            "Updates only on Wi-Fi",
+            "Background limited for heavy apps",
+          ],
+        },
+        {
+          id: "normal",
+          title: "Normal Mode",
+          emoji: "🌊",
+          subtitle: "No restrictions, just tracking",
+          color: "from-slate-500 to-slate-700",
+          savings: "5–10%",
+          details: [
+            "Everything runs as usual",
+            "Data Vantage only reports",
+            "No auto restrictions",
+            "Use when Wi-Fi is free",
+          ],
+        },
+      ];
+
+      return (
+        <div className="w-full h-full bg-slate-50 flex flex-col pt-10">
+          <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+            <button onClick={() => go("dashboard")} className="text-slate-500 font-semibold text-sm">← Back</button>
+            <div className="font-bold text-slate-900">Choose your mode</div>
+            <div className="w-10"></div>
+          </div>
+
+          <div className="flex-1 px-5 overflow-y-auto no-scrollbar pb-20 space-y-3">
+            {modes.map(m => {
+              const selected = mode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setMode(m.id)}
+                  className={`w-full text-left rounded-3xl p-5 transition shadow-sm border-2 ${
+                    selected
+                      ? "bg-white border-emerald-500 ring-4 ring-emerald-500/10"
+                      : "bg-white border-slate-200"
+                  }`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${m.color} text-white flex items-center justify-center text-3xl shadow-md`}>
+                      {m.emoji}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div className="font-black text-slate-900 text-lg">{m.title}</div>
+                        {selected && (
+                          <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold">✓</div>
+                        )}
+                      </div>
+                      <div className="text-sm text-slate-600 mt-0.5">{m.subtitle}</div>
+                      <div className="mt-1 text-xs font-bold text-emerald-700">Saves {m.savings} data</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-1.5">
+                    {m.details.map((d,i) => (
+                      <div key={i} className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                        <span className="text-emerald-500">✓</span>{d}
+                      </div>
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+
+            <div className="rounded-2xl bg-amber-50 border border-amber-200 p-3 mt-2">
+              <div className="flex gap-2">
+                <span>🤖</span>
+                <div className="text-xs text-amber-900 leading-snug">
+                  <b>Auto-switching is on.</b> We'll move you to Survival Mode when your data falls below 500 MB.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <BottomNav active="modes" go={go} />
+        </div>
+      );
+    };
+
+    // ---------- SHARE ----------
+    const ShareScreen = ({ go }) => {
+      const [copied, setCopied] = useState(false);
+      const copy = () => { setCopied(true); setTimeout(()=>setCopied(false), 1500); };
+      return (
+        <div className="w-full h-full bg-slate-900 text-white flex flex-col pt-10 relative">
+          <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+            <button onClick={() => go("dashboard")} className="text-slate-400 font-semibold text-sm">← Back</button>
+            <div className="font-bold">Share</div>
+            <div className="w-10"></div>
+          </div>
+
+          <div className="flex-1 px-6 flex flex-col items-center justify-center text-center">
+            {/* Shareable card */}
+            <div className="w-full rounded-3xl p-6 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 text-white shadow-2xl border-4 border-white/20">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-white text-emerald-600 flex items-center justify-center font-black text-sm">DV</div>
+                  <div className="font-bold text-sm">Data Vantage</div>
+                </div>
+                <div className="text-xs bg-white/20 rounded-full px-2 py-1">🇳🇬</div>
+              </div>
+              <div className="text-[11px] font-bold uppercase tracking-wider opacity-80">This week I saved</div>
+              <div className="text-5xl font-black my-2">3.57 GB</div>
+              <div className="text-xl font-bold">= ₦4,284 💸</div>
+              <div className="mt-4 text-sm opacity-90">
+                "My data used to finish in 4 days. Now it lasts the whole week." — Isi, Lagos
+              </div>
+            </div>
+
+            <div className="mt-6 w-full space-y-2">
+              <button
+                onClick={copy}
+                className="w-full bg-[#25D366] text-white font-bold py-3.5 rounded-2xl text-base active:scale-95 transition flex items-center justify-center gap-2">
+                <span>💬</span> Share on WhatsApp
+              </button>
+              <button
+                onClick={copy}
+                className="w-full bg-slate-800 text-white font-bold py-3.5 rounded-2xl text-base border border-slate-700 active:scale-95 transition flex items-center justify-center gap-2">
+                <span>🔗</span> {copied ? "Link copied!" : "Copy invite link"}
+              </button>
+              <div className="text-center text-xs text-slate-400 mt-2">
+                Your 3 friends who join → you unlock <b className="text-emerald-400">Pro free for 30 days</b>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ---------- BOTTOM NAV ----------
+    const BottomNav = ({ active, go }) => {
+      const items = [
+        { id: "home",     label: "Home",     icon: "🏠", screen: "dashboard" },
+        { id: "insights", label: "Insights", icon: "📊", screen: "insights" },
+        { id: "modes",    label: "Modes",    icon: "⚡", screen: "modes" },
+        { id: "weekly",   label: "Rewards",  icon: "🏆", screen: "weekly" },
+      ];
+      return (
+        <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-3 py-2 flex items-center justify-around z-30">
+          {items.map(it => (
+            <button
+              key={it.id}
+              onClick={() => go(it.screen)}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition ${
+                active === it.id ? "text-emerald-600" : "text-slate-400"
+              }`}>
+              <span className="text-xl">{it.icon}</span>
+              <span className="text-[10px] font-bold">{it.label}</span>
+            </button>
+          ))}
+        </div>
+      );
+    };
+
+    // ---------- APP SHELL ----------
+    const App = () => {
+      const [screen, setScreen] = useState("welcome");
+      const [mode, setMode] = useState("balanced");
+      const [history, setHistory] = useState(["welcome"]);
+
+      const stats = {
+        savedToday: 136,
+        savedNgnToday: 163,
+      };
+
+      const go = (s) => {
+        setScreen(s);
+        setHistory(h => [...h, s]);
+      };
+
+      const reset = () => {
+        setScreen("welcome");
+        setHistory(["welcome"]);
+        setMode("balanced");
+      };
+
+      const jumpTo = (s) => {
+        setScreen(s);
+      };
+
+      const renderScreen = () => {
+        switch(screen) {
+          case "welcome":     return <WelcomeScreen go={go} />;
+          case "permissions": return <PermissionsScreen go={go} />;
+          case "scanning":    return <ScanningScreen go={go} />;
+          case "wow":         return <WowScreen go={go} />;
+          case "fix":         return <FixScreen go={go} />;
+          case "fixSuccess":  return <FixSuccessScreen go={go} />;
+          case "dashboard":   return <DashboardScreen go={go} mode={mode} setMode={setMode} stats={stats} />;
+          case "insights":    return <InsightsScreen go={go} />;
+          case "weekly":      return <WeeklyScreen go={go} />;
+          case "modes":       return <ModesScreen go={go} mode={mode} setMode={setMode} />;
+          case "share":       return <ShareScreen go={go} />;
+          default:            return <WelcomeScreen go={go} />;
+        }
+      };
+
+      const labels = {
+        welcome: "Welcome",
+        permissions: "Permissions",
+        scanning: "Scanning",
+        wow: "Wow Moment",
+        fix: "Fix Flow",
+        fixSuccess: "Fix Success",
+        dashboard: "Daily Dashboard",
+        insights: "Insights & Forecast",
+        weekly: "Weekly Report",
+        modes: "Mode Selector",
+        share: "Share / Referral",
+      };
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-6 gap-10">
+          {/* Side panel — dev preview */}
+          <div className="hidden lg:block w-80 flex-shrink-0">
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-black">DV</div>
+                <div>
+                  <div className="font-black text-slate-900 text-lg leading-tight">Data Vantage</div>
+                  <div className="text-xs text-slate-500">Interactive prototype</div>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600 leading-snug">
+                Tap any screen in the list to jump there. Or use the phone's buttons to walk through the real user journey.
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-sm">
+              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-2 px-1">Journey</div>
+              <div className="space-y-1">
+                {SCREENS.map(s => (
+                  <button
+                    key={s}
+                    onClick={() => jumpTo(s)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-sm transition ${
+                      screen === s
+                        ? "bg-emerald-50 text-emerald-700 font-bold"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${screen === s ? "bg-emerald-500" : "bg-slate-300"}`}></span>
+                    <span>{labels[s]}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="h-px bg-slate-100 my-2"></div>
+              <button
+                onClick={reset}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-sm text-slate-500 hover:bg-slate-50">
+                <span>↺</span> Restart flow
+              </button>
+            </div>
+
+            <div className="mt-4 bg-slate-900 text-white rounded-2xl p-4 text-xs leading-relaxed">
+              <div className="font-bold text-emerald-400 mb-1">Product thesis</div>
+              <p className="text-slate-300">
+                Browsers saved websites. Nobody has saved the <b className="text-white">whole phone</b> — apps, background, auto-downloads, video, sync. Data Vantage is an autopilot that eliminates waste invisibly.
+              </p>
+            </div>
+          </div>
+
+          {/* Phone */}
+          <PhoneShell>
+            {renderScreen()}
+          </PhoneShell>
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
